@@ -1,0 +1,58 @@
+# This script was written by John Galea
+# It was written on Redhat 7.3
+# it takes one directory on photoshow and copies it to photoprism
+# the jpg is then modified using https://exiftool.org/
+# which needs to be downloaded, end expanded
+# the tool only copies jpg or JPG files
+# the tool only does one directory at a time
+# you can change where exiftool, photoshow and photoprism are located
+# the files are originally processed in a temp directory and then renamed
+# the descriptions are copied to a temp workspace
+# the original photoshow directories are untouched
+#
+# set directory locations
+#
+exiftool="/root/Image-ExifTool-12.19/exiftool" #location of exiftool
+photos="/photoshow/Pictures/jgalea/windows" #location of photoshow pics
+photodesc="/photoshow/Thumbs/Thumbs/jgalea/windows/" # location of description xml files
+photoprism="/fileshares/photoprism" #location of photoprism pics
+processing="/fileshares/photoprism/processing" # location for temp processing
+working="/root/add-desc-working" # working directory for description xmls
+echo Use double quotes around directory
+rm -f $working/.*.xml #clean temp space
+directory="$(echo "$1"|sed 's/ /\\ /g')" # convert spaces in dir name into linux format
+echo Processing $directory:
+eval cd $photodesc$directory
+eval cp .*description.xml $working"/"
+printf "rem %s %s\n" "$(date)">>add-desc.log
+eval mkdir $processing
+eval "cp "$photos"/"$directory"/*.JPG "$processing"/"
+eval "cp "$photos"/"$directory"/*.jpg "$processing"/"
+workdir=$working"/.*.xml"
+for file in $workdir
+do
+  filename="$file"
+  filename="$(echo "$filename" | sed 's+JPG_description.xml+JPG+g')"
+  filename="$(echo "$filename" | sed 's+jpg_description.xml+jpg+g')"
+  filename="$(echo "$filename" | sed 's,'$working"/."',,g')"
+#  read -p "Press [Enter] key to start ..."
+  input="$file"
+  first=0
+  while IFS= read -r line
+  do
+    if [ $first -eq 0 ]
+    then
+      first=1
+    else
+      description="$(echo "$line" | sed 's/^.*<content>//g')"
+      description="$(echo "$description" | sed 's+</content></description>++g')"
+      command=$exiftool" -P -overwrite_original_in_place -XPComment=\""$description\"" -ImageDescription=\""$description\"" "$processing"/"$filename">>add-desc.log"
+      echo $command>>add-desc.log
+      eval $command
+    fi
+  done < "$input"
+done
+mv add-desc.log $processing/
+eval "mv "$processing"/ "$photoprism"/"$directory
+echo Indexing Photoprism
+docker exec photoprism photoprism index
